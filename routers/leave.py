@@ -79,3 +79,85 @@ def reject_leave(request_id: int, db: Session = Depends(get_db), current_user=De
     leave.reviewed_by = current_user.id
     db.commit()
     return {"message": "Leave rejected"}
+
+
+@router.get("/calendar/{department_or_project}")
+def get_leave_calendar(department_or_project: str, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Get a calendar of approved leave for a department/project."""
+    # Query approved leave for employees in the project
+    approved_leave = db.query(models.LeaveRequest).filter(
+        models.LeaveRequest.status == "Approved"
+    ).all()
+
+    # Group by start/end dates and employees
+    calendar_events = []
+    for leave in approved_leave:
+        emp = db.query(models.Employee).filter(models.Employee.id == leave.employee_id).first()
+        if emp and emp.project == department_or_project:
+            calendar_events.append({
+                "employee_id": leave.employee_id,
+                "employee_name": emp.full_name,
+                "start_date": str(leave.start_date),
+                "end_date": str(leave.end_date),
+                "type": leave.type,
+                "days": leave.days
+            })
+    
+    return {"project": department_or_project, "leave_events": calendar_events}
+
+
+@router.get("/team_leave")
+def get_team_leave_calendar(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Get all approved leave for the current user's team/project."""
+    # Find current user's employee record and project
+    current_user_emp = db.query(models.Employee).filter(models.Employee.id == current_user.employee_id).first()
+    if not current_user_emp:
+        return {"message": "User has no employee record", "leave_events": []}
+
+    project = current_user_emp.project
+    approved_leave = db.query(models.LeaveRequest).filter(
+        models.LeaveRequest.status == "Approved"
+    ).all()
+
+    calendar_events = []
+    for leave in approved_leave:
+        emp = db.query(models.Employee).filter(models.Employee.id == leave.employee_id).first()
+        if emp and emp.project == project:
+            calendar_events.append({
+                "employee_id": leave.employee_id,
+                "employee_name": emp.full_name,
+                "start_date": str(leave.start_date),
+                "end_date": str(leave.end_date),
+                "type": leave.type,
+                "days": leave.days
+            })
+    
+    return {"project": project, "leave_events": calendar_events}
+
+
+@router.get("/pending")
+def get_pending_leave_approvals(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Get pending leave requests (for HR or managers to approve)."""
+    if current_user.role not in ["hr_admin", "project_manager"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    pending = db.query(models.LeaveRequest).filter(
+        models.LeaveRequest.status == "Pending"
+    ).all()
+    
+    result = []
+    for leave in pending:
+        emp = db.query(models.Employee).filter(models.Employee.id == leave.employee_id).first()
+        result.append({
+            "id": leave.id,
+            "employee_id": leave.employee_id,
+            "employee_name": emp.full_name if emp else "Unknown",
+            "start_date": str(leave.start_date),
+            "end_date": str(leave.end_date),
+            "type": leave.type,
+            "days": leave.days,
+            "reason": leave.reason,
+            "submitted_at": str(leave.submitted_at)
+        })
+    
+    return {"pending_count": len(result), "requests": result}

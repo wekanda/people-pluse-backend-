@@ -6,6 +6,9 @@ import models
 from database import get_db
 from auth import get_current_user
 from typing import List
+import os
+from pathlib import Path
+import shutil
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -24,9 +27,20 @@ class DocumentResponse(BaseModel):
 
 @router.post("/upload")
 async def upload_doc(employee_id: int, document_type: str, file: UploadFile = File(...), db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    # Store file info and path
-    file_path = f"uploads/{employee_id}/{document_type}_{file.filename}"
-    return {"message": f"Document {document_type} uploaded successfully", "path": file_path}
+    # Store file on disk under ./uploads/<employee_id>/
+    upload_root = Path("uploads")
+    dest_dir = upload_root / str(employee_id)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    safe_filename = f"{document_type}_{file.filename}"
+    dest_path = dest_dir / safe_filename
+    try:
+        with dest_path.open("wb") as out_file:
+            shutil.copyfileobj(file.file, out_file)
+    finally:
+        file.file.close()
+
+    # Optionally record audit or link into Employee record (not implemented here)
+    return {"message": f"Document {document_type} uploaded successfully", "path": str(dest_path)}
 
 @router.get("/employee/{employee_id}")
 def get_employee_documents(employee_id: int, db: Session = Depends(get_db)):

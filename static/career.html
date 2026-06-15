@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>People Pluse - Careers</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 32px auto; color: #111; }
+    header { text-align: center; margin-bottom: 24px }
+    .job { border: 1px solid #eee; padding: 16px; border-radius: 8px; margin-bottom: 12px }
+    .job h3 { margin: 0 0 8px 0 }
+    .meta { color: #666; font-size: 0.9em }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>People Pluse - Careers</h1>
+    <p>Open positions at People Pluse</p>
+  </header>
+  <main id="list">
+    <p>Loading jobs...</p>
+  </main>
+  <script>
+    async function loadJobs() {
+      try {
+        const res = await fetch('/recruitment/public/jobs');
+        const jobs = await res.json();
+        const list = document.getElementById('list');
+        if (!jobs || jobs.length === 0) {
+          list.innerHTML = '<p>No open positions at the moment.</p>';
+          return;
+        }
+        list.innerHTML = '';
+        jobs.forEach(j => {
+          const el = document.createElement('div');
+          el.className = 'job';
+          el.innerHTML = `
+            <h3>${j.title}</h3>
+            <div class="meta">${j.department || ''} • ${j.location || ''} • Closes: ${j.closing_date || 'N/A'}</div>
+            <p>${(j.description || '').slice(0, 400)}</p>
+            <p><a href="mailto:recruitment@peoplepluse.com?subject=Application for ${encodeURIComponent(j.title)}">Apply via email</a></p>
+          `;
+          list.appendChild(el);
+        });
+      } catch (e) {
+        document.getElementById('list').innerHTML = '<p>Error loading jobs.</p>';
+      }
+    }
+    loadJobs();
+  </script>
+</body>
+</html>

@@ -205,3 +205,123 @@ def _parse_date(val):
             except ValueError:
                 continue
     return None
+
+
+@router.post("/payslips_excel")
+async def upload_payslips_excel(file: UploadFile = File(...), db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Import payslips from an Excel file. Expected headers: file_code or employee_id, period_start, period_end, gross_pay, tax, deductions, pdf_url (optional)"""
+    try:
+        if current_user.role not in ("hr_admin", "project_manager"):
+            raise HTTPException(status_code=403, detail="Insufficient permissions to upload payslips")
+
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="File must be Excel format (.xlsx or .xls)")
+
+        workbook = openpyxl.load_workbook(file.file)
+        imported = 0
+        errors = []
+        for sheet in workbook.worksheets:
+            header_row_index = None
+            headers = None
+            # find header row
+            for row_index, row in enumerate(sheet.iter_rows(min_row=1, max_row=12, values_only=True), start=1):
+                if not row:
+                    continue
+                normalized = [str(cell).strip().lower() if cell is not None else "" for cell in row]
+                if any(k in normalized for k in ("file code", "employee code", "employee id", "period start", "gross", "gross_pay", "net_pay", "period_end", "period end")):
+                    header_row_index = row_index
+                    headers = [cell.strip().lower() if cell else "" for cell in row]
+                    break
+            if not headers:
+                continue
+
+            # normalize header mapping
+            header_map = []
+            for h in headers:
+                h = h.lower()
+                if "file" in h and ("code" in h or "employee code" in h):
+                    header_map.append('file_code')
+                elif "employee id" in h or h == 'employee_id':
+                    header_map.append('employee_id')
+                elif "period start" in h or "start" in h:
+                    header_map.append('period_start')
+                elif "period end" in h or "end" in h:
+                    header_map.append('period_end')
+                elif "gross" in h:
+                    header_map.append('gross_pay')
+                elif "tax" in h:
+                    header_map.append('tax')
+                elif "deduct" in h:
+                    header_map.append('deductions')
+                elif "net" in h:
+                    header_map.append('net_pay')
+                elif "pdf" in h or "url" in h or "file url" in h:
+                    header_map.append('pdf_url')
+                else:
+                    header_map.append(h.replace(' ', '_'))
+
+            for row in sheet.iter_rows(min_row=header_row_index + 1, values_only=True):
+                try:
+                    row_dict = {}
+                    for idx, key in enumerate(header_map):
+                        if idx < len(row):
+                            row_dict[key] = row[idx]
+
+                    # resolve employee id
+                    emp_id = None
+                    if row_dict.get('employee_id'):
+                        try:
+                            emp_id = int(row_dict.get('employee_id'))
+                        except Exception:
+                            emp_id = None
+                    if not emp_id and row_dict.get('file_code'):
+                        emp = db.query(models.Employee).filter(models.Employee.file_code == str(row_dict.get('file_code'))).first()
+                        if emp:
+                            emp_id = emp.id
+
+                    if not emp_id:
+                        errors.append(f"Row missing employee identifier: {row_dict}")
+                        continue
+
+                    period_start = _parse_date(row_dict.get('period_start'))
+                    period_end = _parse_date(row_dict.get('period_end'))
+                    try:
+                        gross = float(row_dict.get('gross_pay') or 0)
+                    except Exception:
+                        gross = 0.0
+                    try:
+                        tax = float(row_dict.get('tax') or 0)
+                    except Exception:
+                        tax = 0.0
+                    try:
+                        deductions = float(row_dict.get('deductions') or 0)
+                    except Exception:
+                        deductions = 0.0
+
+                    net = float(row_dict.get('net_pay') or (gross - tax - deductions))
+
+                    payslip = models.Payslip(
+                        employee_id=emp_id,
+                        period_start=period_start,
+                        period_end=period_end,
+                        gross_pay=gross,
+                        tax=tax,
+                        deductions=deductions,
+                        net_pay=net,
+                        pdf_url=row_dict.get('pdf_url'),
+                        generated_by=current_user.id
+                    )
+                    db.add(payslip)
+                    db.commit()
+                    imported += 1
+                except Exception as e:
+                    db.rollback()
+                    errors.append(str(e))
+                    continue
+
+        return {"imported": imported, "errors": errors[:20]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))

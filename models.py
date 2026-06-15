@@ -90,3 +90,189 @@ class Notification(Base):
     type = Column(String)
     read = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Requisition(Base):
+    __tablename__ = "requisitions"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String)
+    department = Column(String)
+    location = Column(String)
+    job_description = Column(Text)
+    justification = Column(Text)
+    vacancy_count = Column(Integer, default=1)
+    budget = Column(Float, default=0.0)
+    requested_by = Column(Integer, ForeignKey("users.id"))
+    status = Column(String, default="pending")
+    priority = Column(String, default="normal")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+
+
+class RequisitionApproval(Base):
+    __tablename__ = "requisition_approvals"
+    id = Column(Integer, primary_key=True, index=True)
+    requisition_id = Column(Integer, ForeignKey("requisitions.id"))
+    approver_id = Column(Integer, ForeignKey("users.id"))
+    action = Column(String)  # approved / rejected
+    note = Column(Text, nullable=True)
+    acted_at = Column(DateTime, default=datetime.utcnow)
+
+
+class JobPosting(Base):
+    __tablename__ = "job_postings"
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String)
+    description = Column(Text)
+    department = Column(String)
+    location = Column(String)
+    posted_at = Column(DateTime, default=datetime.utcnow)
+    closing_date = Column(Date)
+    status = Column(String, default="open")
+    created_by = Column(Integer, ForeignKey("users.id"))
+    is_internal = Column(Boolean, default=False)
+    channels = Column(String, nullable=True)  # comma separated channels
+    published_at = Column(DateTime, nullable=True)
+    external_posted = Column(Boolean, default=False)
+    external_channels = Column(String, nullable=True)
+
+
+class Application(Base):
+    __tablename__ = "applications"
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("job_postings.id"))
+    applicant_name = Column(String)
+    email = Column(String)
+    resume_url = Column(String, nullable=True)
+    cover_letter = Column(Text, nullable=True)
+    status = Column(String, default="submitted")
+    applied_at = Column(DateTime, default=datetime.utcnow)
+    reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+
+class Internship(Base):
+    __tablename__ = "internships"
+    id = Column(Integer, primary_key=True, index=True)
+    candidate_name = Column(String)
+    email = Column(String)
+    start_date = Column(Date)
+    end_date = Column(Date)
+    mentor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    status = Column(String, default="planned")
+    notes = Column(Text, nullable=True)
+    application_id = Column(Integer, ForeignKey("applications.id"), nullable=True)
+
+
+class Payslip(Base):
+    __tablename__ = "payslips"
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"))
+    period_start = Column(Date)
+    period_end = Column(Date)
+    gross_pay = Column(Float, default=0.0)
+    tax = Column(Float, default=0.0)
+    deductions = Column(Float, default=0.0)
+    net_pay = Column(Float, default=0.0)
+    generated_at = Column(DateTime, default=datetime.utcnow)
+    pdf_url = Column(String, nullable=True)
+    generated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+
+Employee.payslips = relationship("Payslip", backref="employee")
+
+
+class Applicant(Base):
+    __tablename__ = "applicants"
+    id = Column(Integer, primary_key=True, index=True)
+    full_name = Column(String)
+    email = Column(String, index=True)
+    phone = Column(String, nullable=True)
+    source = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resume_url = Column(String, nullable=True)
+    consent = Column(Boolean, default=True)
+
+
+class ApplicationStage(Base):
+    __tablename__ = "application_stages"
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id"))
+    stage = Column(String)
+    status = Column(String)
+    note = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Interview(Base):
+    __tablename__ = "interviews"
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id"))
+    scheduled_at = Column(DateTime)
+    duration_minutes = Column(Integer, default=60)
+    panel = Column(String, nullable=True)  # comma separated user ids
+    location = Column(String, nullable=True)
+    status = Column(String, default="scheduled")
+
+
+class Assessment(Base):
+    __tablename__ = "assessments"
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id"))
+    name = Column(String)
+    score = Column(Float, nullable=True)
+    results_url = Column(String, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id"))
+    reviewer_id = Column(Integer, ForeignKey("users.id"))
+    rating = Column(Integer, nullable=True)
+    comments = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Offer(Base):
+    __tablename__ = "offers"
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id"))
+    offered_at = Column(DateTime, default=datetime.utcnow)
+    salary = Column(Float, nullable=True)
+    currency = Column(String, default='USD')
+    terms = Column(Text, nullable=True)
+    status = Column(String, default='pending')
+    signed_at = Column(DateTime, nullable=True)
+
+
+class BackgroundCheck(Base):
+    __tablename__ = "background_checks"
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id"))
+    type = Column(String)
+    status = Column(String, default='pending')
+    result = Column(Text, nullable=True)
+    checked_at = Column(DateTime, nullable=True)
+
+
+class OnboardingChecklist(Base):
+    __tablename__ = "onboarding_checklists"
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    application_id = Column(Integer, ForeignKey("applications.id"), nullable=True)
+    items_json = Column(Text, nullable=True)
+    completed = Column(Boolean, default=False)
+    completed_at = Column(DateTime, nullable=True)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    action = Column(String)
+    object_type = Column(String)
+    object_id = Column(String)
+    details = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

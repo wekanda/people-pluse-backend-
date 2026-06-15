@@ -8,3 +8,5 @@ python-multipart
 openpyxl
 passlib[bcrypt]
 python-jose[cryptography]
+pdfminer.six
+requests
