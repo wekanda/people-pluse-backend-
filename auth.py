@@ -116,6 +116,9 @@ def check_permission(current_user: models.User, permission: str) -> bool:
         "staff": [
             "view_own_data", "request_leave", "submit_timesheet",
             "view_own_appraisals", "view_own_documents"
+        ],
+        "pay": [
+            "manage_payroll", "generate_payslips", "view_payroll_reports"
         ]
     }
     
