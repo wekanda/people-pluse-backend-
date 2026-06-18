@@ -7,6 +7,9 @@ from datetime import datetime, date
 from datetime import timedelta
 from typing import List
 import json
+import os
+import smtplib
+from email.message import EmailMessage
 
 router = APIRouter(prefix="/hr", tags=["hr-tools"])
 
@@ -61,14 +64,58 @@ def screen_application(payload: dict, db: Session = Depends(get_db), current_use
     return result
 
 
+def send_email_if_configured(to_email: str, subject: str, body: str) -> bool:
+    smtp_host = os.getenv('SMTP_HOST')
+    smtp_port = int(os.getenv('SMTP_PORT', '587')) if os.getenv('SMTP_PORT') else 587
+    smtp_user = os.getenv('SMTP_USER')
+    smtp_password = os.getenv('SMTP_PASSWORD')
+    smtp_from = os.getenv('SMTP_FROM', smtp_user or 'no-reply@peoplepluse.com')
+
+    if not smtp_host or not smtp_user or not smtp_password:
+        return False
+
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = smtp_from
+    msg['To'] = to_email
+    msg.set_content(body)
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as smtp:
+            smtp.starttls()
+            smtp.login(smtp_user, smtp_password)
+            smtp.send_message(msg)
+        return True
+    except Exception as exc:
+        print(f"SMTP send failed: {exc}")
+        return False
+
+
 @router.post('/notify')
 def notify_candidate(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    # stub for email/SMS; record notification
     user_email = payload.get('email')
     message = payload.get('message')
-    note = models.Notification(user_id=current_user.id, message=f"Notify {user_email}: {message}", type='candidate_notify')
-    db.add(note); db.commit()
-    return {'status':'queued', 'message':message}
+    email_sent = False
+    if user_email:
+        email_sent = send_email_if_configured(
+            to_email=user_email,
+            subject=payload.get('subject', 'People Plus Notification'),
+            body=message
+        )
+
+    note = models.Notification(
+        user_id=current_user.id,
+        message=f"Notify {user_email}: {message}",
+        type='candidate_notify',
+        read=False
+    )
+    db.add(note)
+    db.commit()
+    return {
+        'status': 'sent' if email_sent else 'queued',
+        'email_sent': email_sent,
+        'message': message
+    }
 
 
 @router.post('/offer/generate')
